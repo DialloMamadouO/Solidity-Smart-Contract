@@ -4,19 +4,15 @@ These smart contracts will enable the company to:
 
 -Pay Associate-level employees quickly and easily.
 
-
 -Distribute profits to different tiers of employees.
-
 
 -Distribute company shares for employees in a "deferred equity incentive plan" automatically.
 
-We will build three seperate samart contracts that we will designate as level one, level two and level three.
+We will build three seperate smart contracts that we will designate as level one, level two and level three.
 
 -Level One is an AssociateProfitSplitter contract. This will accept Ether into the contract and divide the Ether evenly among the associate level employees. This will allow the Human Resources department to pay employees quickly and efficiently.
 
-
 -Level Two is a TieredProfitSplitter that will distribute different percentages of incoming Ether to employees at different tiers/levels. For example, the CEO gets paid 60%, CTO 25%, and Bob gets 15%.
-
 
 -Level Three is a DeferredEquityPlan that models traditional company stock plans. This contract will automatically manage 1000 shares with an annual distribution of 250 over 4 years for a single employee.
 
@@ -38,6 +34,11 @@ employee_two -- Another address payable that represents the second employee.
 
 employee_three -- The third address payable that represents the third employee.
 
+contract AssociateProfitSplitter {
+    address payable Owner;
+    address payable employee_one;
+    address payable employee_two;
+    address payable employee_three;
 
 Then, we create a constructor function that accepts:
 
@@ -52,11 +53,20 @@ address payable _three
 
 Within the constructor, we will set the employee addresses to equal the parameter values. This will allow us to avoid hardcoding the employee addresses.
 
+ constructor(address payable _one, address payable _two, address payable _three) public {
+        Owner = msg.sender;
+        employee_one = _one;
+        employee_two = _two;
+        employee_three = _three;
+   
 Next, we will create the following functions:
 
 balance -- This function should be set to public view returns(uint), and must return the contract's current balance. 
 Since we should always be sending Ether to the beneficiaries, this function should always return 0. 
 
+ function balance() public view returns(uint) {
+        return address(this).balance;
+        
 deposit -- This function should set to public payable and ensure that only the owner can call the function.
 
 In this function, we will perform the following steps:
@@ -68,7 +78,22 @@ In this function, we will perform the following steps:
 Since uint only contains positive whole numbers, and Solidity does not fully support float/decimals, we must deal with a potential remainder at the end of this function since amount will discard the remainder during division.
 We may either have 1 or 2 wei leftover, so we will transfer the (msg.value - amount * 3) back to msg.sender. This will re-multiply the amount by 3, then subtract it from the msg.value to account for any leftover wei, and send it back to Human Resources.
 
+ function deposit() public payable {
+        uint amount = msg.value / 3;
+
+        // transfer the amount to each employee
+        employee_one.transfer(amount);
+        employee_two.transfer(amount);
+        employee_three.transfer(amount);
+        
+        // Take care of a potential remainderr by sending back to HR (msg.sender)
+        msg.sender.transfer(msg.value - (amount * 3));
+
+
 Finally, we will create a fallback function using function() external payable, and call the deposit function from within it. This will ensure that the logic in deposit executes if Ether is sent directly to the contract. This is important to prevent Ether from being locked in the contract since we don't have a withdraw function in this use-case.
+
+ function fallback() external payable {
+        deposit();
 
 ### Test the Contract
 In the Deploy tab in Remix, we will deploy the contract to our local Ganache chain by connecting to Injected Web3 and ensuring MetaMask is pointed to localhost:8545.
@@ -100,7 +125,29 @@ Step 2: total += amount;
 
 Step 3: employee_one.transfer(amount);
 
-We eill send the remainder to the employee with the highest percentage by subtracting total from msg.value, and sending that to an employee.
+We will send the remainder to the employee with the highest percentage by subtracting total from msg.value, and sending that to an employee.
+
+function deposit() public payable {
+        uint points = msg.value / 100; // Calculates rudimentary percentage by dividing msg.value into 100 units
+        uint total;
+        uint amount;
+        
+        amount = points * 60;
+        total += amount;
+        employee_one.transfer(amount);
+        
+        amount = points * 25;
+        total += amount;
+        employee_two.transfer(amount);
+        
+        amount = points * 15;
+        
+        employee_three.transfer(amount);
+        
+        total += amount;
+        
+        employee_one.transfer(msg.value - total); // ceo gets the remaining wei
+
 
 Then, we eill deploy and test the contract functionality by depositing various Ether values (greater than 100 wei).
 
@@ -137,6 +184,29 @@ The distributed_shares is equal to (now - start_time) divided by 365 days, multi
 We will make sure to include the parenthesis around now - start_time in our calculation to ensure that the order of operations is followed properly.
 
 The final if statement provided checks that in case the employee does not cash out until 5+ years after the contract start, the contract does not reward more than the total_shares agreed upon in the contract.
+
+    function distribute(uint amount) public {
+        require(msg.sender == HR || msg.sender == employee, "You are not authorized to execute this contract.");
+        require(active == true, "Contract not active.");
+
+        // @TODO: Add "require" statements to enforce that:
+        // 1: `unlock_time` is less than or equal to `now`
+        // 2: `distributed_shares` is less than the `total_shares`
+        require(unlock_time <= now, "You are not vested!");
+        require(distributed_shares <= total_shares, "There are no shares left!");
+        
+
+        // @TODO: Add 365 days to the `unlock_time`
+        unlock_time = now + 365 days;
+
+        // @TODO: Calculate the shares distributed by using the function (now - start_time) / 365 days * the annual distribution
+        // Make sure to include the parenthesis around (now - start_time) to get accurate results!
+        distributed_shares = (now - start_time) / 365 days * 250;
+
+        // double check in case the employee does not cash out until after 5+ years
+        if (distributed_shares > 1000) {
+            distributed_shares = 1000;
+
 
 We will deploy and test our contract locally.
 
